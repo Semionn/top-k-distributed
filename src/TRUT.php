@@ -35,12 +35,19 @@ class TRUT implements TopKSolver
         return $this->dbManager->getMap($key."Result", 'intval');
     }
 
+    /**
+     * Process a lowered words from the text
+     * @param string $text
+     */
     public function processText(string $text) {
         $this->checkTimestamp();
-        foreach (explode(" ", $text) as $word) {
+        $delim = " \n\t,.!?:;()";
+        $word = strtok(strtolower($text), $delim);
+        while ($word !== false) {
             if ($this->checkWord($word)) {
                 $this->processWord($word);
             }
+            $word = strtok($delim);
         }
     }
 
@@ -53,7 +60,7 @@ class TRUT implements TopKSolver
     }
 
     /**
-     * Can be uncomment for single-node application server
+     * Can be uncomment for single-node application
      */
     private function checkTimestamp() {
 //        if (time() - $this->lastTimestamp >= $this->timeFrame) {
@@ -74,8 +81,7 @@ class TRUT implements TopKSolver
     }
 
     private function checkWord(string $word): bool {
-        // TODO:
-        return true;
+        return preg_match("/^.*[a-z].*$/i", $word);
     }
 
     /**

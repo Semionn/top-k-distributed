@@ -12,9 +12,8 @@ use StreamCounterTask\RedisDBTopKManager;
 
 
 $currTime = getCurrentTimeFrame(TIME_FRAME_SIZE);
-$method = $_SERVER['REQUEST_METHOD'];
 $request = explode('/', trim($_SERVER['PATH_INFO'],'/'));
-$input = json_decode(file_get_contents('php://input'),true);
+$input = file_get_contents('php://input');
 
 $endpoint = preg_replace('/[^a-z0-9_]+/i','',array_shift($request));
 $arg = array_shift($request);
@@ -23,13 +22,13 @@ $target_func = null;
 
 switch ($endpoint) {
     case "process":
-        $target_func = function (TopKSolver $topKSolver, string $arg) use ($currTime) {
-            $topKSolver->processText($arg);
+        $target_func = function (TopKSolver $topKSolver) use ($currTime, $input) {
+            $topKSolver->processText($input);
             echo $currTime;
         };
         break;
     case "get":
-        $target_func = function (TopKSolver $topKSolver, string $arg) {
+        $target_func = function (TopKSolver $topKSolver) use ($arg) {
             $res = $topKSolver->getTopK($arg);
             if ($res === false) {
                 echo "No_info";
@@ -67,7 +66,7 @@ if ($target_func != null) {
         $topKSolver = unserialize($dbSolver);
         $topKSolver->setDBTopKManager($dbManager);
     }
-    $target_func($topKSolver, $arg);
+    $target_func($topKSolver);
     $serialized = serialize($topKSolver);
     $localRedis->set($fullSolverKey, $serialized);
 

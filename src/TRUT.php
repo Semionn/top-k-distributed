@@ -29,7 +29,7 @@ class TRUT implements TopKSolver
 
     public function getTopK(string $key) {
         $this->checkTimestamp();
-        if (!$this->dbManager->keyExists($key)) {
+        if (!$this->dbManager->keyExists($key."Result")) {
             return false;
         }
         return $this->dbManager->getMap($key."Result", 'intval');
@@ -247,5 +247,10 @@ class TRUT implements TopKSolver
         $this->dbManager->setMap($key."Result", $result);
         echo "RESULT:";
         print_r($result);
+        $keysToRemove = array("NodesCount", "NodesPerWord", "S", "Dict1", "Dict2");
+        $keysToRemove = array_map(function($x) use ($key) {
+            return $key.$x;
+        }, $keysToRemove);
+        $this->dbManager->deleteKeys($keysToRemove);
     }
 }

@@ -67,4 +67,10 @@ class RedisDBTopKManager implements DBTopKManager
     public function keyExists($key) {
         return $this->redisObj->exists($key);
     }
+
+    public function deleteKeys(array $keys) {
+        foreach ($keys as $key) {
+            $this->redisObj->delete($key);
+        }
+    }
 }

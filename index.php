@@ -11,6 +11,7 @@ use StreamCounterTask\TRUT;
 use StreamCounterTask\RedisDBTopKManager;
 
 
+$currTime = getCurrentTimeFrame(TIME_FRAME_SIZE);
 $method = $_SERVER['REQUEST_METHOD'];
 $request = explode('/', trim($_SERVER['PATH_INFO'],'/'));
 $input = json_decode(file_get_contents('php://input'),true);
@@ -22,13 +23,24 @@ $target_func = null;
 
 switch ($endpoint) {
     case "process":
-        $target_func = function (TopKSolver $topKSolver, string $arg) {
+        $target_func = function (TopKSolver $topKSolver, string $arg) use ($currTime) {
             $topKSolver->processText($arg);
+            echo $currTime;
         };
         break;
     case "get":
         $target_func = function (TopKSolver $topKSolver, string $arg) {
-            echo $topKSolver->getTopK($arg);
+            $res = $topKSolver->getTopK($arg);
+            if ($res === false) {
+                echo "No_info";
+            } else {
+                $out = $sep = '';
+                foreach( $res as $key => $value ) {
+                    $out .= $sep . $key . ':' . $value;
+                    $sep = ',';
+                }
+                echo $out;
+            }
         };
         break;
     default:
@@ -41,7 +53,7 @@ if ($target_func != null) {
     $localRedis = new Redis();
     $localRedis->connect(REDIS_LOCAL_IP, REDIS_LOCAL_PORT);
     $localDBManager = new RedisDBTopKManager($localRedis);
-    $fullSolverKey = SOLVER_KEY.strval(getCurrentTimeFrame(TIME_FRAME_SIZE));
+    $fullSolverKey = SOLVER_KEY.strval($currTime);
     $solverLockKey = SOLVER_LOCK_KEY.strval(getCurrentTimeFrame(TIME_FRAME_SIZE));
     $localDBManager->lock($solverLockKey, $timeout=LOCKING_TIMEOUT);
 

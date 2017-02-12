@@ -22,4 +22,6 @@ interface DBTopKManager
     public function getByKey($key);
 
     public function keyExists($key);
+
+    public function deleteKeys(array $keys);
 }

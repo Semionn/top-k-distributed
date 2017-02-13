@@ -1,0 +1,4 @@
+<?php
+
+const LOCAL_STR_SUM_CAPACITY = 200;
+const DB_STR_SUM_CAPACITY = 1000;

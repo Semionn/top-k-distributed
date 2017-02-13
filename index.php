@@ -2,6 +2,7 @@
 
 include 'config/commonConfig.php';
 include 'config/dbConfig.php';
+include 'config/streamSummaryConfig.php';
 include 'src/TopKSolver.php';
 include 'src/TRUT.php';
 include 'src/DBTopKManager.php';
@@ -61,7 +62,7 @@ if ($target_func != null) {
     $dbManager = new RedisDBTopKManager($redis);
     $dbSolver = $localRedis->get($fullSolverKey);
     if ($dbSolver === false) {
-        $topKSolver = new TRUT($dbManager, TOP_K, TIME_FRAME_SIZE);
+        $topKSolver = new TRUT($dbManager, TOP_K, TIME_FRAME_SIZE, LOCAL_STR_SUM_CAPACITY, DB_STR_SUM_CAPACITY);
     } else {
         $topKSolver = unserialize($dbSolver);
         $topKSolver->setDBTopKManager($dbManager);

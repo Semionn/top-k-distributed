@@ -4,11 +4,11 @@ include 'config/commonConfig.php';
 include 'config/dbConfig.php';
 include 'config/streamSummaryConfig.php';
 include 'src/TopKSolver.php';
-include 'src/TRUT.php';
+include 'src/TPUT.php';
 include 'src/DBTopKManager.php';
 include 'src/RedisDBTopKManager.php';
 use StreamCounterTask\TopKSolver;
-use StreamCounterTask\TRUT;
+use StreamCounterTask\TPUT;
 use StreamCounterTask\RedisDBTopKManager;
 
 
@@ -62,7 +62,7 @@ if ($target_func != null) {
     $dbManager = new RedisDBTopKManager($redis);
     $dbSolver = $localRedis->get($fullSolverKey);
     if ($dbSolver === false) {
-        $topKSolver = new TRUT($dbManager, TOP_K, TIME_FRAME_SIZE, LOCAL_STR_SUM_CAPACITY, DB_STR_SUM_CAPACITY);
+        $topKSolver = new TPUT($dbManager, TOP_K, TIME_FRAME_SIZE, LOCAL_STR_SUM_CAPACITY, DB_STR_SUM_CAPACITY);
     } else {
         $topKSolver = unserialize($dbSolver);
         $topKSolver->setDBTopKManager($dbManager);

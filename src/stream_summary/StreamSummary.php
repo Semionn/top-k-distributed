@@ -6,66 +6,81 @@ include "DoublyLinkedList.php";
 include "Bucket.php";
 include "Counter.php";
 
+/**
+ * StreamSummary implementation based on
+ * @link https://github.com/addthis/stream-lib
+ * Original paper: <i>Efficient Computation of Frequent and Top-k Elements in Data Streams</i>
+ * by Metwally, Agrawal, and Abbad, 2005
+ * Brief review: this data structure allows to store a counters of items, increment them at O(1)
+ * and find the item with minimum counter at O(1). With SpaceSaving algorithm it guarantees to find
+ * top-k items of Zipfian distributed data.
+ * @package StreamCounterTask
+ */
 class StreamSummary
 {
     /** @var int */
     private $capacity;
 
     /** @var int */
-    private $bucket_cnt = 0;
+    private $bucketCnt = 0;
 
     /** @var array */
-    private $counter_map = array();
+    private $counterMap = array();
 
     /** @var DoublyLinkedList */
-    private $bucket_list;
+    private $bucketList;
 
-    public function __construct(int $capacity)
-    {
+    public function __construct(int $capacity) {
         $this->capacity = $capacity;
-        $this->bucket_list = new DoublyLinkedList();
+        $this->bucketList = new DoublyLinkedList();
     }
 
-    public function size(): int
-    {
-        return count($this->counter_map);
+    /**
+     * Returns count of stored items
+     * @return int
+     */
+    public function size(): int {
+        return count($this->counterMap);
     }
 
-    public function offer($item, int $inc_count = 1): bool
-    {
-        $is_new_item = !array_key_exists($item, $this->counter_map);
-        $dropped_item = null;
-        if ($is_new_item) {
+    /**
+     * Increments counter for the specified item by $inc_count
+     * @param $item
+     * @param int $incCount
+     * @return bool
+     */
+    public function offer($item, int $incCount = 1): bool {
+        $isNewItem = !array_key_exists($item, $this->counterMap);
+        $droppedItem = null;
+        if ($isNewItem) {
             if ($this->size() < $this->capacity) {
-                $counter_id = $this->size();
-                $bucket = $this->bucket_list->appendRight(new Bucket($this->bucket_cnt, 0))->value;
-                $counter_node = $bucket->counters->appendRight(new Counter($counter_id, $this->bucket_list->last(), $item));
-                $this->bucket_cnt += 1;
+                $counterId = $this->size();
+                $bucket = $this->bucketList->appendRight(new Bucket($this->bucketCnt, 0))->value;
+                $counterNode = $bucket->counters->appendRight(new Counter($counterId, $this->bucketList->last(), $item));
+                $this->bucketCnt += 1;
             } else {
-                $min_bucket = $this->bucket_list->last()->value;
-                $counter_node = $min_bucket->counters->last();
-                $counter = $counter_node->value;
-                $dropped_item = $counter->item;
-                unset($this->counter_map[$dropped_item]);
+                $minBucket = $this->bucketList->last()->value;
+                $counterNode = $minBucket->counters->last();
+                $counter = $counterNode->value;
+                $droppedItem = $counter->item;
+                unset($this->counterMap[$droppedItem]);
                 $counter->item = $item;
-                $counter->error = $min_bucket->count;
+                $counter->error = $minBucket->count;
             }
-            $this->counter_map[$item] = $counter_node;
+            $this->counterMap[$item] = $counterNode;
         } else {
-            $counter_node = $this->counter_map[$item];
+            $counterNode = $this->counterMap[$item];
         }
-        $this->increment_counter($counter_node, $inc_count);
-        return $is_new_item;
+        $this->incrementCounter($counterNode, $incCount);
+        return $isNewItem;
     }
 
-
-    private function increment_counter(DLLNode $counter_node, int $inc_count)
-    {
-        $counter = $counter_node->value;
+    private function incrementCounter(DLLNode $counterNode, int $incCount) {
+        $counter = $counterNode->value;
         $oldNode = $counter->bucket;
         $bucket = $oldNode->value;
-        $bucket->counters->remove($counter_node);
-        $counter->count = $counter->count + $inc_count;
+        $bucket->counters->remove($counterNode);
+        $counter->count = $counter->count + $incCount;
         $item = $counter->item;
 
         $bucketNodePrev = $oldNode;
@@ -73,8 +88,8 @@ class StreamSummary
         while ($bucketNodeNext != null) {
             $bucketNext = $bucketNodeNext->value;
             if ($counter->count == $bucketNext->count) {
-                $counter_node = $bucketNext->counters->appendRight($counter_node->value);
-                $this->counter_map[$item] = $counter_node;
+                $counterNode = $bucketNext->counters->appendRight($counterNode->value);
+                $this->counterMap[$item] = $counterNode;
                 break;
             } else if ($counter->count > $bucketNext->count) {
                 $bucketNodePrev = $bucketNodeNext;
@@ -85,23 +100,28 @@ class StreamSummary
         }
 
         if ($bucketNodeNext == null) {
-            $bucketNext = new Bucket($this->bucket_cnt, $counter->count);
-            $this->bucket_cnt += 1;
-            $counter_node = $bucketNext->counters->insert($counter_node->value);
-            $this->counter_map[$item] = $counter_node;
-            $bucketNodeNext = $this->bucket_list->insert($bucketNext, $bucketNodePrev);
+            $bucketNext = new Bucket($this->bucketCnt, $counter->count);
+            $this->bucketCnt += 1;
+            $counterNode = $bucketNext->counters->insert($counterNode->value);
+            $this->counterMap[$item] = $counterNode;
+            $bucketNodeNext = $this->bucketList->insert($bucketNext, $bucketNodePrev);
         }
         $counter->bucket = $bucketNodeNext;
         if (count($bucket->counters) == 0) {
-            $this->bucket_list->remove($oldNode);
+            $this->bucketList->remove($oldNode);
         }
     }
 
+    /**
+     * Returns array of k most frequent items
+     * @param int $k
+     * @return array
+     */
     public function top_k(int $k): array {
         $topK = array();
-        $index = count($this->bucket_list);
+        $index = count($this->bucketList);
         while ($index) {
-            $b = $this->bucket_list[--$index];
+            $b = $this->bucketList[--$index];
             foreach ($b->counters as $c) {
                 if (count($topK) == $k) {
                     return $topK;
@@ -112,110 +132,155 @@ class StreamSummary
         return $topK;
     }
 
-    public function merge(StreamSummary $other) {
-        $common_words = array_intersect(array_keys($this->counter_map), array_keys($other->counter_map));
-        foreach ($common_words as $word) {
-            $counter = $other->counter_map[$word]->value;
+    /**
+     * Updates current structure with elements from the other in descending order
+     * After update total count of elements won't exceeds the capacity
+     * @param StreamSummary $other
+     */
+    public function update(StreamSummary $other) {
+        $commonWords = array_intersect(array_keys($this->counterMap), array_keys($other->counterMap));
+        foreach ($commonWords as $word) {
+            $counter = $other->counterMap[$word]->value;
             $this->offer($word, $counter->count - $counter->error);
         }
-        foreach ($common_words as $word) {
-            $bucketNode = $other->counter_map[$word]->value->bucket;
-            $bucketNode->value->remove($other->counter_map[$word]);
+        foreach ($commonWords as $word) {
+            $bucketNode = $other->counterMap[$word]->value->bucket;
+            $bucketNode->value->remove($other->counterMap[$word]);
             if (count($bucketNode->value->counters) == 0) {
-                $other->bucket_list->remove($bucketNode);
+                $other->bucketList->remove($bucketNode);
             }
-            unset($other->counter_map);
+            unset($other->counterMap);
         }
 
-        $it1 = $this->bucket_list->first();
-        $it2 = $other->bucket_list->first();
-        $current_size = 0;
-        while ($current_size < $this->capacity) {
+        $it1 = $this->bucketList->first();
+        $it2 = $other->bucketList->first();
+        $currentSize = 0;
+        while ($currentSize < $this->capacity) {
             if ($it1 == null or $it2 == null) {
                 break;
             }
             if ($it1->value->count == $it2->value->count) {
-                $current_size = $this->merge_buckets($it2, $current_size, $it1->value);
+                $currentSize = $this->updateBucket($it2, $currentSize, $it1->value);
                 $it1 = $it1->next;
                 $it2 = $it2->next;
             } else if ($it1->value->count > $it2->value->count) {
-                $current_size += count($it1->value->counters);
+                $currentSize += count($it1->value->counters);
                 $it1 = $it1->next;
             } else {
-                $new_bucket = new Bucket($this->bucket_cnt, $it2->value->count);
-                $this->bucket_cnt++;
-                if ($it1 != null) {
-                    $bucketNode = $this->bucket_list->insert($new_bucket, $it1);
-                } else {
-                    $bucketNode = $this->bucket_list->appendRight($new_bucket);
-                }
-                $current_size = $this->merge_buckets($it2, $current_size, $bucketNode);
-                $it2 = $it2->next;
+                list($currentSize, $it2) = $this->insertBucket($it2, $it1, $currentSize);
             }
         }
-        while ($it2 != null and $current_size < $this->capacity) {
-            $new_bucket = new Bucket($this->bucket_cnt, $it2->value->count);
-            $this->bucket_cnt++;
-            if ($it1 != null) {
-                $bucketNode = $this->bucket_list->insert($new_bucket, $it1);
-                printf("insert bucket\n");
-            } else {
-                $bucketNode = $this->bucket_list->appendRight($new_bucket);
-                printf("add bucket to end\n");
-            }
-            $current_size = $this->merge_buckets($it2, $current_size, $bucketNode);
-            echo "current size: $current_size\n";
-            $it2 = $it2->next;
+        while ($it2 != null and $currentSize < $this->capacity) {
+            list($currentSize, $it2) = $this->insertBucket($it2, $it1, $currentSize);
         }
-        # TODO: for best results all counters in bucket should be sorted in ascending order of the error rate
-        $bucket_it = $this->bucket_list->last();
-        while ($bucket_it != null and $current_size >= $this->capacity) {
-            $counter_it = $bucket_it->value->counters->last();
-            while ($counter_it != null and $current_size >= $this->capacity) {
-                unset($this->counter_map[$counter_it->value->item]);
-                $bucket_it->value->counters->remove($counter_it);
-                $counter_it = $counter_it->prev;
-                $current_size--;
+        $bucketIt = $this->bucketList->last();
+        while ($bucketIt != null and $currentSize >= $this->capacity) {
+            $counterIt = $bucketIt->value->counters->last();
+            while ($counterIt != null and $currentSize >= $this->capacity) {
+                unset($this->counterMap[$counterIt->value->item]);
+                $bucketIt->value->counters->remove($counterIt);
+                $counterIt = $counterIt->prev;
+                $currentSize--;
             }
         }
     }
 
-    private function merge_buckets(DLLNode $new_bucket_node, int $current_size, DLLNode $bucketNode) {
-        $counter_it = $new_bucket_node->value->counters->last();
-        while ($counter_it != null and $current_size < $this->capacity) {
-            $counter_it->value->id = $this->size();
-            echo "add counter:".strval($counter_it->value->item)."\n";
-            $new_counter = clone $counter_it->value;
-            $new_counter->bucket = $bucketNode;
-            $new_counter->id = $current_size;
-            $current_size += 1;
-            $counter_node = $bucketNode->value->counters->appendRight($new_counter);
-            $this->counter_map[$new_counter->item] = $counter_node;
-            $counter_it = $counter_it->prev;
+    /**
+     * Inserts new bucket from $it2 before $it1 or at the and of the bucket list
+     * @param null|DLLNode $it2
+     * @param null|DLLNode $it1
+     * @param int $currentSize
+     * @return array
+     */
+    private function insertBucket($it2, $it1, $currentSize): array
+    {
+        $newBucket = new Bucket($this->bucketCnt, $it2->value->count);
+        $this->bucketCnt++;
+        if ($it1 != null) {
+            $bucketNode = $this->bucketList->insert($newBucket, $it1);
+        } else {
+            $bucketNode = $this->bucketList->appendRight($newBucket);
         }
-        return $current_size;
+        $currentSize = $this->updateBucket($it2, $currentSize, $bucketNode);
+        $it2 = $it2->next;
+        return array($currentSize, $it2);
     }
 
+    /**
+     * Updates $bucketNode with counters from the $new_bucket_node.
+     * Both of them should store counters of the same frequency
+     * @param DLLNode $newBucketNode
+     * @param int $currentSize
+     * @param DLLNode $bucketNode
+     * @return int
+     */
+    private function updateBucket(DLLNode $newBucketNode, int $currentSize, DLLNode $bucketNode) {
+        $counterIt = $newBucketNode->value->counters->last();
+        while ($counterIt != null and $currentSize < $this->capacity) {
+            $counterIt->value->id = $this->size();
+            $newCounter = clone $counterIt->value;
+            $newCounter->bucket = $bucketNode;
+            $newCounter->id = $currentSize;
+            $currentSize += 1;
+            $counterNode = $bucketNode->value->counters->appendRight($newCounter);
+            $this->counterMap[$newCounter->item] = $counterNode;
+            $counterIt = $counterIt->prev;
+        }
+        return $currentSize;
+    }
+
+    const STREAM_SUM_KEY_CAP = "Cap";
+    const STREAM_SUM_KEY_BUCK_CNT = "BucketCount";
+    const STREAM_SUM_KEY_COUNTERS_MAP = "CountersMap";
+    const STREAM_SUM_KEY_COUNTERS = "Counters";
+    const STREAM_SUM_KEY_BUCKETS = "Buckets";
+
+    /**
+     * Deletes info of previously stored <i>StreamSummary</i> with $key prefix
+     * @param DBTopKManager $dbManager
+     * @param string $key
+     */
+    public static function clearKeys(DBTopKManager $dbManager, string $key) {
+        try {
+            if ($dbManager->lock($key)) {
+                $dbManager->deleteKeys(array(
+                    $key.StreamSummary::STREAM_SUM_KEY_CAP,
+                    $key.StreamSummary::STREAM_SUM_KEY_BUCK_CNT,
+                    $key.StreamSummary::STREAM_SUM_KEY_COUNTERS_MAP,
+                    $key.StreamSummary::STREAM_SUM_KEY_COUNTERS,
+                    $key.StreamSummary::STREAM_SUM_KEY_BUCKETS,
+                ));
+            }
+        } finally {
+            $dbManager->unlock($key);
+        }
+    }
+
+    /**
+     * Saves the structure with provided <i>DBTopKManager</i> and prefix $key.
+     * The method acquires lock $key for the consistency of parallel savings
+     * @param DBTopKManager $dbManager
+     * @param string $key
+     */
     public function save(DBTopKManager $dbManager, string $key) {
         try {
             if ($dbManager->lock($key)) {
-                $dbManager->storeByKey($key."Cap", $this->capacity);
-                $dbManager->storeByKey($key."BucketCount", $this->bucket_cnt);
+                $dbManager->storeByKey($key. StreamSummary::STREAM_SUM_KEY_CAP, $this->capacity);
+                $dbManager->storeByKey($key.StreamSummary::STREAM_SUM_KEY_BUCK_CNT, $this->bucketCnt);
 
-                $dbManager->delete($key."CountersMap");
-                $dbManager->setMap($key."CountersMap", array_map(function($counterNode) {
+                $dbManager->delete($key.StreamSummary::STREAM_SUM_KEY_COUNTERS_MAP);
+                $dbManager->setMap($key.StreamSummary::STREAM_SUM_KEY_COUNTERS_MAP, array_map(function($counterNode) {
                     return $counterNode->value->id;
-                }, $this->counter_map));
+                }, $this->counterMap));
                 # store all Buckets
-                $dbManager->delete($key."Buckets");
-                foreach ($this->bucket_list as $bucket) {
-                    echo "BUCKETS_I: ".strval($bucket)."\n";
-                    $dbManager->pushRightByKey($key."Buckets", strval($bucket));
+                $dbManager->delete($key.StreamSummary::STREAM_SUM_KEY_BUCKETS);
+                foreach ($this->bucketList as $bucket) {
+                    $dbManager->pushRightByKey($key.StreamSummary::STREAM_SUM_KEY_BUCKETS, strval($bucket));
                 }
                 # store all Counters
-                $dbManager->delete($key."Counters");
-                foreach (array_values($this->counter_map) as $counterNode) {
-                    $dbManager->setByHash($key."Counters", $counterNode->value->id, Counter::store($counterNode));
+                $dbManager->delete($key.StreamSummary::STREAM_SUM_KEY_COUNTERS);
+                foreach (array_values($this->counterMap) as $counterNode) {
+                    $dbManager->setByHash($key.StreamSummary::STREAM_SUM_KEY_COUNTERS, $counterNode->value->id, Counter::store($counterNode));
                 }
             }
         } finally {
@@ -223,57 +288,72 @@ class StreamSummary
         }
     }
 
+    /**
+     * Restores <i>StreamSummary</i> from database with provided <i>DBTopKManager</i> and prefix $key
+     * If the structure isn't stored, return empty instance of <i>StreamSummary</i> with $defaultCapacity
+     * @param DBTopKManager $dbManager
+     * @param string $key
+     * @param int $defaultCapacity
+     * @return StreamSummary
+     */
     public static function load(DBTopKManager $dbManager, string $key, int $defaultCapacity): StreamSummary {
-        if (!$dbManager->keyExists($key."Cap")) {
+        if (!$dbManager->keyExists($key.StreamSummary::STREAM_SUM_KEY_CAP)) {
             return new StreamSummary($defaultCapacity);
         }
-        $capacity = intval($dbManager->getByKey($key."Cap"));
-        $bucket_cnt = intval($dbManager->getByKey($key."BucketCount"));
-        $counters_raw = $dbManager->getMap($key."Counters", "strval");
-        $counter_map = $dbManager->getMap($key."CountersMap", "strval");
+        $capacity = intval($dbManager->getByKey($key.StreamSummary::STREAM_SUM_KEY_CAP));
+        $bucketCnt = intval($dbManager->getByKey($key.StreamSummary::STREAM_SUM_KEY_BUCK_CNT));
+        $countersRaw = $dbManager->getMap($key.StreamSummary::STREAM_SUM_KEY_COUNTERS, "strval");
+        $counterMap = $dbManager->getMap($key.StreamSummary::STREAM_SUM_KEY_COUNTERS_MAP, "strval");
         $counters = array();
-        foreach ($counters_raw as $keyI => $counter) {
+        foreach ($countersRaw as $keyI => $counter) {
             $counters[intval($keyI)] = Counter::parse($counter);
         }
 
+        // All pointers stored as IDs, and should be converted back to pointers
         foreach (array_values($counters) as $counter) {
             $counter->next = StreamSummary::counter_from_id($counters, $counter->next);
             $counter->prev = StreamSummary::counter_from_id($counters, $counter->prev);
         }
 
-        $bucket_map = array();
-        $bucket_list = new DoublyLinkedList();
-        $prev_bucket = null;
-        for ($i = 0; $i < $dbManager->lenByKey($key."Buckets"); ++$i) {
-            $b = $dbManager->getByIndex($key."Buckets", $i);
+        $bucketMap = array();
+        $bucketList = new DoublyLinkedList();
+        $prevBucket = null;
+        for ($i = 0; $i < $dbManager->lenByKey($key.StreamSummary::STREAM_SUM_KEY_BUCKETS); ++$i) {
+            $b = $dbManager->getByIndex($key.StreamSummary::STREAM_SUM_KEY_BUCKETS, $i);
             $bucket = Bucket::parse($b, $counters);
-            $prev_bucket = $bucket_list->insert($bucket, $prev_bucket);
-            $bucket_map[$bucket->id] = $prev_bucket;
+            $prevBucket = $bucketList->insert($bucket, $prevBucket);
+            $bucketMap[$bucket->id] = $prevBucket;
         }
 
         $result = new StreamSummary($capacity);
-        $result->bucket_cnt = $bucket_cnt;
-        $result->bucket_list = $bucket_list;
+        $result->bucketCnt = $bucketCnt;
+        $result->bucketList = $bucketList;
 
-        $result->counter_map = array();
-        foreach ($counter_map as $keyI => $counter) {
-            $result->counter_map[$keyI] = StreamSummary::counter_from_id($counters, $counter);
+        $result->counterMap = array();
+        foreach ($counterMap as $keyI => $counter) {
+            $result->counterMap[$keyI] = StreamSummary::counter_from_id($counters, $counter);
         }
         foreach (array_values($counters) as $counter) {
-            $counter->value->bucket = $bucket_map[$counter->value->bucket];
+            $counter->value->bucket = $bucketMap[$counter->value->bucket];
         }
         return $result;
     }
 
     private static function counter_from_id(array $counters, int $id) {
+        // null pointers should be stored as -1
         if ($id == -1) {
             return null;
         }
         return $counters[intval($id)];
     }
 
-    public function getKOrderStat(int $k) {
-        $bucket = $this->bucket_list->first();
+    /**
+     * Returns $k order statistics of the item frequencies
+     * @param int $k
+     * @return int
+     */
+    public function getKOrderStat(int $k): int {
+        $bucket = $this->bucketList->first();
         $result = 0;
         while ($k > 0 && $bucket != null) {
             $result = $bucket->value->count;
@@ -283,40 +363,64 @@ class StreamSummary
         return $result;
     }
 
-    public function filtered(int $k) {
+    /**
+     * Returns new <i>StreamSummary</i> structure with <u>the same</u> counter nodes and buckets,
+     * but only with frequency equal or greater then $k
+     * @param int $k
+     * @return StreamSummary
+     */
+    public function filtered(int $k): StreamSummary {
         $result = new StreamSummary($this->capacity);
-        $bucket = $this->bucket_list->first();
+        $bucket = $this->bucketList->first();
         $lastBucket = null;
         while ($bucket != null and $bucket->value->count >= $k) {
-            $result->bucket_cnt += 1;
-            $lastBucket = $result->bucket_list->insert($bucket->value, $lastBucket);
-            $count_node = $bucket->value->counters->last();
-            while ($count_node != null) {
-                $result->counter_map[$count_node->value->item] = $count_node;
-                $count_node = $count_node->prev;
+            $result->bucketCnt += 1;
+            $lastBucket = $result->bucketList->insert($bucket->value, $lastBucket);
+            $countNode = $bucket->value->counters->last();
+            while ($countNode != null) {
+                $result->counterMap[$countNode->value->item] = $countNode;
+                $countNode = $countNode->prev;
             }
             $bucket = $bucket->next;
         }
         return $result;
     }
 
+    /**
+     * Returns array of stored items
+     * @return array
+     */
     public function keys() {
-        return array_keys($this->counter_map);
+        return array_keys($this->counterMap);
     }
 
+    /**
+     * Returns frequency of the $item
+     * @param $item
+     * @return int
+     */
     public function getFreq($item): int {
         if (!$this->keyExists($item)) {
             return 0;
         }
-        $counter = $this->counter_map[$item]->value;
+        $counter = $this->counterMap[$item]->value;
         return $counter->count;
     }
 
+    /**
+     * Returns associative array of item frequencies
+     * @return array
+     */
     public function itemsFreqs(): array {
-        return array_map(function ($node) { return $node->value->count; }, $this->counter_map);
+        return array_map(function ($node) { return $node->value->count; }, $this->counterMap);
     }
 
+    /**
+     * Returns is the $item stored in the structure
+     * @param $item
+     * @return bool
+     */
     public function keyExists($item): bool {
-        return array_key_exists($item, $this->counter_map);
+        return array_key_exists($item, $this->counterMap);
     }
 }

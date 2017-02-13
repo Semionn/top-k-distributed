@@ -4,7 +4,7 @@ chdir(__DIR__);
 include '../config/commonConfig.php';
 include '../config/dbConfig.php';
 include 'TopKSolver.php';
-include 'TRUT.php';
+include 'TPUT.php';
 include 'DBTopKManager.php';
 include 'RedisDBTopKManager.php';
 use StreamCounterTask\RedisDBTopKManager;

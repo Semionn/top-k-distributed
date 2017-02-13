@@ -5,12 +5,31 @@ namespace StreamCounterTask;
 include 'utils.php';
 include 'stream_summary/StreamSummary.php';
 
-
-class TRUT implements TopKSolver
+/**
+ * Implementation of <i>TopKSolver</i> based on paper:
+ * <i>Efficient Top-K Query Calculation in Distributed Networks</i>
+ * by Pei Cao and Zhe Wang, 2004 <p>
+ * Distributed and exact version of solving top-k problem.
+ * Improves total complexity of solving the task by N distributed nodes
+ * from O(N^2^) to O(N^1.5^) in case of Zipf distribution <p>
+ * There are more fast improvement of this algorithm, named 4RUT
+ * (<i>Efficient Top-k Query Processing Algorithms in Highly Distributed Environments</i>
+ * by Qiming Fang, Guangwen Yang, 2014), but in the current project implementation,
+ * without allotted servers to aggregation, 4RUT would be slower
+ * @package StreamCounterTask
+ */
+class TPUT implements TopKSolver
 {
     const ROUND_1_WAIT_TIME = 3; // seconds
     const ROUND_2_WAIT_TIME = 3;
     const ROUND_3_WAIT_TIME = 3;
+    const PHASE_1_KEY_DICT  = "Dict1";
+    const PHASE_1_KEY_NODES = "NodesCount";
+    const PHASE_2_KEY_DICT  = "Dict2";
+    const PHASE_2_KEY_NODES = "NodesPerWord";
+    const PHASE_2_KEY_SURV  = "S";
+    const FINAL_KEY_RESULT  = "Result";
+    const PHASE_1_KEY_T = "t1";
 
     /** @var StreamSummary */
     private $words;
@@ -44,10 +63,10 @@ class TRUT implements TopKSolver
 
     public function getTopK(string $key) {
         $this->checkTimestamp();
-        if (!$this->dbManager->keyExists($key."Result")) {
+        if (!$this->dbManager->keyExists($key. TPUT::FINAL_KEY_RESULT)) {
             return false;
         }
-        return $this->dbManager->getMap($key."Result", 'intval');
+        return $this->dbManager->getMap($key. TPUT::FINAL_KEY_RESULT, 'intval');
     }
 
     /**
@@ -66,16 +85,29 @@ class TRUT implements TopKSolver
         }
     }
 
+    /**
+     * Process $word without checking
+     * @param string $word
+     */
     public function processWord(string $word) {
         $this->words->offer($word);
     }
 
+    /**
+     * Starting TPUT algorithm to evaluate top-K and store it in the data base
+     * @param string $key
+     */
     public function startSync(string $key) {
         $this->phaseFirst($key);
         $this->phaseSecond($key);
         $this->phaseThird($key);
     }
 
+    /**
+     * Checks $word for containing at least one alphabet char
+     * @param string $word
+     * @return bool
+     */
     private function checkWord(string $word): bool {
         return preg_match("/^.*[a-z].*$/i", $word);
     }
@@ -87,27 +119,20 @@ class TRUT implements TopKSolver
     private function phaseFirst(string $key) {
         try {
             if ($this->dbManager->lock($key)) {
-                $dbWords = StreamSummary::load($this->dbManager, $key."Dict1", $this->dbCapacity);
-//                echo "dbWords:";
-//                print_r($dbWords);
-//                echo "this->words:";
-//                print_r($this->words);
-                $dbWords->merge($this->words);
-//                echo "mergedWords:";
-//                print_r($dbWords);
-                $dbWords->save($this->dbManager, $key."Dict1");
-                $this->dbManager->incrKey($key."NodesCount");
+                $dbWords = StreamSummary::load($this->dbManager, $key. TPUT::PHASE_1_KEY_DICT, $this->dbCapacity);
+                $dbWords->update($this->words);
+                $dbWords->save($this->dbManager, $key. TPUT::PHASE_1_KEY_DICT);
+                $this->dbManager->incrKey($key. TPUT::PHASE_1_KEY_NODES);
             } else {
                 error_log("Something gone wrong with locking key ".$key);
             }
         } finally {
             $this->dbManager->unlock($key);
         }
-        checkAndLog(sleep(TRUT::ROUND_1_WAIT_TIME), "Phase 1 sleep failed");
+        checkAndLog(sleep(TPUT::ROUND_1_WAIT_TIME), "Phase 1 sleep failed");
         if ($this->dbManager->tryLock($key)) {
-            echo "trylock1<br>";
             try {
-                if (!$this->dbManager->keyExists($key."t1")) {
+                if (!$this->dbManager->keyExists($key. TPUT::PHASE_1_KEY_T)) {
                     $this->phaseFirstCompletion($key);
                 }
             } finally {
@@ -117,13 +142,11 @@ class TRUT implements TopKSolver
     }
 
     private function phaseFirstCompletion(string $key) {
-        $words = StreamSummary::load($this->dbManager, $key."Dict1", $this->dbCapacity);
+        $words = StreamSummary::load($this->dbManager, $key. TPUT::PHASE_1_KEY_DICT, $this->dbCapacity);
         $t1 = $words->getKOrderStat($this->k);
-        $nodes_count = intval($this->dbManager->getByKey($key."NodesCount"));
-        $t1 = intval($t1 / $nodes_count);
-        $this->dbManager->storeByKey($key."t1", $t1);
-//        echo "t1:";
-//        print_r($t1);
+        $nodesCount = intval($this->dbManager->getByKey($key. TPUT::PHASE_1_KEY_NODES));
+        $t1 = intval($t1 / $nodesCount);
+        $this->dbManager->storeByKey($key. TPUT::PHASE_1_KEY_T, $t1);
     }
 
     /**
@@ -133,44 +156,33 @@ class TRUT implements TopKSolver
     private function phaseSecond(string $key) {
         try {
             if ($this->dbManager->lock($key)) {
-                $t1 = intval($this->dbManager->getByKey($key."t1"));
+                $t1 = intval($this->dbManager->getByKey($key. TPUT::PHASE_1_KEY_T));
 
                 $curWords = $this->words->filtered($t1);
 
-                $dbWords = StreamSummary::load($this->dbManager, $key."Dict2", $this->dbCapacity);
-//                echo "dbWords:";
-//                print_r($dbWords);
-                $dbWords->merge($curWords);
-//                echo "mergedWords:";
-//                print_r($dbWords);
-                $dbWords->save($this->dbManager, $key."Dict2");
+                $dbWords = StreamSummary::load($this->dbManager, $key. TPUT::PHASE_2_KEY_DICT, $this->dbCapacity);
+                $dbWords->update($curWords);
+                $dbWords->save($this->dbManager, $key. TPUT::PHASE_2_KEY_DICT);
                 # increment count of nodes, which sent words same as from the current dictionary
-                $nodesPerWord = $this->dbManager->getMap($key."NodesPerWord", 'intval');
+                $nodesPerWord = $this->dbManager->getMap($key. TPUT::PHASE_2_KEY_NODES, 'intval');
 
                 $commonWords = array_intersect(array_keys($nodesPerWord), $curWords->keys());
-//                echo "commonWords:";
-//                print_r($commonWords);
                 $diffWords = array_fill_keys(array_diff($curWords->keys(), array_keys($nodesPerWord)), 1);
-//                echo "diffWords:";
-//                print_r($diffWords);
                 $nodesPerWord = $nodesPerWord + $diffWords;
                 foreach (array_keys($commonWords) as $keyI) {
                     $nodesPerWord[$keyI] += 1;
                 }
-                $this->dbManager->setMap($key."NodesPerWord", $nodesPerWord);
-//                echo "nodesPerWord:";
-//                print_r($nodesPerWord);
+                $this->dbManager->setMap($key. TPUT::PHASE_2_KEY_NODES, $nodesPerWord);
             } else {
                 error_log("Something gone wrong with locking key ".$key);
             }
         } finally {
             $this->dbManager->unlock($key);
         }
-        checkAndLog(sleep(TRUT::ROUND_2_WAIT_TIME), "Phase 2 sleep failed");
+        checkAndLog(sleep(TPUT::ROUND_2_WAIT_TIME), "Phase 2 sleep failed");
         if ($this->dbManager->tryLock($key)) {
-            echo "trylock2<br>";
             try {
-                if (!$this->dbManager->keyExists($key."S"))
+                if (!$this->dbManager->keyExists($key. TPUT::PHASE_2_KEY_SURV))
                     $this->phaseSecondCompletion($key);
             } finally {
                 $this->dbManager->unlock($key);
@@ -180,26 +192,20 @@ class TRUT implements TopKSolver
 
     private function phaseSecondCompletion(string $key)
     {
-        $words = StreamSummary::load($this->dbManager, $key."Dict2", $this->dbCapacity);
+        $words = StreamSummary::load($this->dbManager, $key. TPUT::PHASE_2_KEY_DICT, $this->dbCapacity);
         $t2 = $this->words->getKOrderStat($this->k);
-        $nodesCount = intval($this->dbManager->getByKey($key."NodesCount"));
-        $nodesPerWord = $this->dbManager->getMap($key."NodesPerWord", 'intval');
+        $nodesCount = intval($this->dbManager->getByKey($key. TPUT::PHASE_1_KEY_NODES));
+        $nodesPerWord = $this->dbManager->getMap($key. TPUT::PHASE_2_KEY_NODES, 'intval');
         $wordsUpperFreq = $words->itemsFreqs();
-        print_r($wordsUpperFreq);
 
         array_walk($wordsUpperFreq, function (&$value, $word) use ($nodesCount, $nodesPerWord, $t2)
             {
                 $value += ($nodesCount - $nodesPerWord[$word]) * intval($t2 / $nodesCount);
             });
 
-        print_r($wordsUpperFreq);
         $wordsCandidatesKeys = array_keys(array_filter($wordsUpperFreq, function($x) use ($t2) { return $x >= $t2;}));
         $wordsCandidates = array_fill_keys($wordsCandidatesKeys, 0);
-        echo "wordsCandidates:";
-        print_r($wordsCandidates);
-        $this->dbManager->setMap($key."S", $wordsCandidates);
-        echo "t2:";
-        print_r($t2);
+        $this->dbManager->setMap($key. TPUT::PHASE_2_KEY_SURV, $wordsCandidates);
     }
 
     /**
@@ -209,23 +215,23 @@ class TRUT implements TopKSolver
     private function phaseThird(string $key) {
         try {
             if ($this->dbManager->lock($key)) {
-                $dbWords = $this->dbManager->getMap($key."S", 'intval');
+                $dbWords = $this->dbManager->getMap($key. TPUT::PHASE_2_KEY_SURV, 'intval');
                 array_walk($dbWords, function(&$value, $word) {
                     if ($this->words->keyExists($word)) {
                         $value += $this->words->getFreq($word);
                     }
                 });
-                $this->dbManager->setMap($key."S", $dbWords);
+                $this->dbManager->setMap($key. TPUT::PHASE_2_KEY_SURV, $dbWords);
             } else {
                 error_log("Something gone wrong with locking key ".$key);
             }
         } finally {
             $this->dbManager->unlock($key);
         }
-        checkAndLog(sleep(TRUT::ROUND_3_WAIT_TIME), "Phase 3 sleep failed");
+        checkAndLog(sleep(TPUT::ROUND_3_WAIT_TIME), "Phase 3 sleep failed");
         if ($this->dbManager->tryLock($key)) {
             try {
-                if (!$this->dbManager->keyExists($key . "Result"))
+                if (!$this->dbManager->keyExists($key. TPUT::FINAL_KEY_RESULT))
                     $this->phaseThirdCompletion($key);
             } finally {
                 $this->dbManager->unlock($key);
@@ -234,20 +240,19 @@ class TRUT implements TopKSolver
     }
 
     private function phaseThirdCompletion(string $key) {
-        $words = $this->dbManager->getMap($key."S", 'intval');
-//        print_r($words);
+        $words = $this->dbManager->getMap($key. TPUT::PHASE_2_KEY_SURV, 'intval');
         arsort($words);
-//        print_r($words);
         $result = array_slice($words, 0, $this->k, $preserve_keys = true);
-//        print_r($result);
-        $this->dbManager->setMap($key."Result", $result);
+        $this->dbManager->setMap($key. TPUT::FINAL_KEY_RESULT, $result);
         echo "RESULT:";
         print_r($result);
-        $keysToRemove = array("NodesCount", "NodesPerWord", "S", "Dict1", "Dict2");
+        $keysToRemove = array(TPUT::PHASE_1_KEY_NODES, TPUT::PHASE_2_KEY_NODES, TPUT::PHASE_2_KEY_SURV, TPUT::PHASE_1_KEY_DICT, TPUT::PHASE_2_KEY_DICT, TPUT::PHASE_1_KEY_T);
         $keysToRemove = array_map(function($x) use ($key) {
             return $key.$x;
         }, $keysToRemove);
         $this->dbManager->deleteKeys($keysToRemove);
+        StreamSummary::clearKeys($this->dbManager, $key. TPUT::PHASE_1_KEY_DICT);
+        StreamSummary::clearKeys($this->dbManager, $key. TPUT::PHASE_2_KEY_DICT);
     }
 
     /**

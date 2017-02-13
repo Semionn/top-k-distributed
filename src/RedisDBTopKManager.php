@@ -5,7 +5,11 @@ namespace StreamCounterTask;
 include 'RedLock.php';
 use Redis;
 
-//TODO: add pipe support
+//TODO: add pipelines support
+/**
+ * Implementation of <i>DBTopKManager</i> for Redis
+ * @package StreamCounterTask
+ */
 class RedisDBTopKManager implements DBTopKManager
 {
     /** @var Redis */
@@ -18,7 +22,7 @@ class RedisDBTopKManager implements DBTopKManager
         $this->redisObj = $redisObj;
     }
 
-    public function lock(string $key, int $timeout = 5 * 60) {
+    public function lock(string $key, int $timeout = 5 * 60): bool {
         if (array_key_exists($key, $this->locks)) {
             $this->unlock($key);
         }
@@ -73,9 +77,7 @@ class RedisDBTopKManager implements DBTopKManager
     }
 
     public function deleteKeys(array $keys) {
-        foreach ($keys as $key) {
-            $this->redisObj->delete($key);
-        }
+        $this->redisObj->del($keys);
     }
 
     public function delete(string $key) {
@@ -92,9 +94,9 @@ class RedisDBTopKManager implements DBTopKManager
         return $this->redisObj->lIndex($key, $index);
     }
 
-    public function setByHash(string $key, string $hashKey, string $store)
+    public function setByHash(string $key, string $hashKey, string $value)
     {
-        $this->redisObj->hset($key, $hashKey, $store);
+        $this->redisObj->hset($key, $hashKey, $value);
     }
 
     public function pushRightByKey(string $key, string $value)

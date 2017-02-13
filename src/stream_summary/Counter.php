@@ -2,6 +2,11 @@
 
 namespace StreamCounterTask;
 
+/**
+ * Data structure for the <i>StreamSummary</i>.
+ * Contains link to parent bucket, item for counting, base frequency end estimate of counting error
+ * @package StreamCounterTask
+ */
 class Counter
 {
     /** @var int */
@@ -27,21 +32,30 @@ class Counter
         $this->count = $count;
     }
 
+    /**
+     * Parses string representation of a <i>Counter</i>
+     * @param string $str
+     * @return DLLNode new <i>DLLNode</i>, which contains counter with parsed fields and links (as IDs) to other nodes
+     */
     public static function parse(string $str): DLLNode {
-        echo "COUNTER:".$str.":COUNTER\n";
         $arr = explode(',', $str);
-        $prev_id = intval($arr[0]);
-        $next_id = intval($arr[1]);
+        $prevID = intval($arr[0]);
+        $nextID = intval($arr[1]);
         $id = intval($arr[2]);
-        $bucket_id = intval($arr[3]);
+        $bucketID = intval($arr[3]);
         $item = $arr[4];
         $error = intval($arr[5]);
         $count = intval($arr[6]);
-        $counter = new Counter($id, $bucket_id, $item, $error, $count);
-        $node = new DLLNode($counter, $prev=$prev_id, $next=$next_id);
+        $counter = new Counter($id, $bucketID, $item, $error, $count);
+        $node = new DLLNode($counter, $prev=$prevID, $next=$nextID);
         return $node;
     }
 
+    /**
+     * Returns string representation of parent <i>DLLNode</i> and itself
+     * @param DLLNode $counterNode parent node
+     * @return string
+     */
     public static function store(DLLNode $counterNode): string
     {
         $res = array();
@@ -56,10 +70,13 @@ class Counter
             $res[] = -1;
         }
         $res[] = strval($counterNode->value);
-        echo "COUNTER______:".strval($counterNode->value)."\n";
         return implode(",", array_map('strval', $res));
     }
 
+    /**
+     * String representation of <i>Counter</i> for storing in the data base
+     * @return string
+     */
     function __toString()
     {
         return implode(",", array_map('strval', [$this->id, $this->bucket->value->id, $this->item, $this->error, $this->count]));

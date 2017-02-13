@@ -5,6 +5,11 @@ use Countable;
 use Iterator;
 use IteratorAggregate;
 
+/**
+ * Doubly Linked List
+ * The only reason to use instead of <i>SplDoublyLinkedList</i> is <i>DLLNode</i>s referencing
+ * @package StreamCounterTask
+ */
 class DoublyLinkedList implements Countable, IteratorAggregate
 {
     /** @var null|DLLNode */
@@ -20,6 +25,7 @@ class DoublyLinkedList implements Countable, IteratorAggregate
     }
 
     /**
+     * Returns the first node of the list at linear time
      * @return null|DLLNode
      */
     public function first() {
@@ -33,41 +39,56 @@ class DoublyLinkedList implements Countable, IteratorAggregate
     }
 
     /**
+     * Returns the last node of the list
      * @return null|DLLNode
      */
     public function last() {
         return $this->last;
     }
 
-
+    /**
+     * Appends the item at the end of the list
+     * @param $item
+     * @return DLLNode node with inserted item
+     */
     public function appendRight($item) {
-        $new_node = new DLLNode($item);
+        $newNode = new DLLNode($item);
         $this->size += 1;
         if ($this->last == null) {
-            $this->last = $new_node;
-            return $new_node;
+            $this->last = $newNode;
+            return $newNode;
         }
-        $this->last->next = $new_node;
-        $new_node->prev = $this->last;
-        $this->last = $new_node;
-        return $new_node;
+        $this->last->next = $newNode;
+        $newNode->prev = $this->last;
+        $this->last = $newNode;
+        return $newNode;
     }
 
-    public function insert($item, $before_node = null) {
-        if ($before_node == null) {
+    /**
+     * Inserts the item before specified node, or at the end, if the node is null
+     * @param $item
+     * @param null $beforeNode
+     * @return DLLNode node with inserted item
+     */
+    public function insert($item, $beforeNode = null) {
+        if ($beforeNode == null) {
             return $this->appendRight($item);
         }
         $new_node = new DLLNode($item);
         $this->size += 1;
-        $new_node->prev = $before_node->prev;
-        $new_node->next = $before_node;
-        if ($before_node->prev != null) {
-            $before_node->prev->next = $new_node;
+        $new_node->prev = $beforeNode->prev;
+        $new_node->next = $beforeNode;
+        if ($beforeNode->prev != null) {
+            $beforeNode->prev->next = $new_node;
         }
-        $before_node->prev = $new_node;
+        $beforeNode->prev = $new_node;
         return $new_node;
     }
 
+    /**
+     * Removes specified node from the list
+     * @param DLLNode $node
+     */
     public function remove(DLLNode $node) {
         $this->size -= 1;
         if ($node == $this->last) {
@@ -99,6 +120,10 @@ class DoublyLinkedList implements Countable, IteratorAggregate
     }
 }
 
+/**
+ * Node for the <i>DoublyLinkedList</i>
+ * @package StreamCounterTask
+ */
 class DLLNode
 {
     /** @var mixed */
@@ -117,6 +142,11 @@ class DLLNode
     }
 }
 
+/**
+ * Iterator implementation for the <i>DoublyLinkedList</i>
+ * @link http://php.net/manual/en/class.iteratoraggregate.php
+ * @package StreamCounterTask
+ */
 class DLLIterator implements Iterator
 {
     /** @var DoublyLinkedList */

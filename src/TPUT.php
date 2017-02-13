@@ -20,9 +20,9 @@ include 'stream_summary/StreamSummary.php';
  */
 class TPUT implements TopKSolver
 {
-    const ROUND_1_WAIT_TIME = 3; // seconds
-    const ROUND_2_WAIT_TIME = 3;
-    const ROUND_3_WAIT_TIME = 3;
+    const ROUND_1_WAIT_TIME = 30; // seconds
+    const ROUND_2_WAIT_TIME = 30;
+    const ROUND_3_WAIT_TIME = 30;
     const PHASE_1_KEY_DICT  = "Dict1";
     const PHASE_1_KEY_NODES = "NodesCount";
     const PHASE_2_KEY_DICT  = "Dict2";

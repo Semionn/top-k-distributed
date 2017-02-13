@@ -20,9 +20,9 @@ include 'stream_summary/StreamSummary.php';
  */
 class TPUT implements TopKSolver
 {
-    const ROUND_1_WAIT_TIME = 30; // seconds
-    const ROUND_2_WAIT_TIME = 30;
-    const ROUND_3_WAIT_TIME = 30;
+    const PHASE_1_WAIT_TIME = 30; // seconds
+    const PHASE_2_WAIT_TIME = 30;
+    const PHASE_3_WAIT_TIME = 30;
     const PHASE_1_KEY_DICT  = "Dict1";
     const PHASE_1_KEY_NODES = "NodesCount";
     const PHASE_2_KEY_DICT  = "Dict2";
@@ -129,7 +129,7 @@ class TPUT implements TopKSolver
         } finally {
             $this->dbManager->unlock($key);
         }
-        checkAndLog(sleep(TPUT::ROUND_1_WAIT_TIME), "Phase 1 sleep failed");
+        checkAndLog(sleep(TPUT::PHASE_1_WAIT_TIME), "Phase 1 sleep failed");
         if ($this->dbManager->tryLock($key)) {
             try {
                 if (!$this->dbManager->keyExists($key. TPUT::PHASE_1_KEY_T)) {
@@ -179,7 +179,7 @@ class TPUT implements TopKSolver
         } finally {
             $this->dbManager->unlock($key);
         }
-        checkAndLog(sleep(TPUT::ROUND_2_WAIT_TIME), "Phase 2 sleep failed");
+        checkAndLog(sleep(TPUT::PHASE_2_WAIT_TIME), "Phase 2 sleep failed");
         if ($this->dbManager->tryLock($key)) {
             try {
                 if (!$this->dbManager->keyExists($key. TPUT::PHASE_2_KEY_SURV))
@@ -228,7 +228,7 @@ class TPUT implements TopKSolver
         } finally {
             $this->dbManager->unlock($key);
         }
-        checkAndLog(sleep(TPUT::ROUND_3_WAIT_TIME), "Phase 3 sleep failed");
+        checkAndLog(sleep(TPUT::PHASE_3_WAIT_TIME), "Phase 3 sleep failed");
         if ($this->dbManager->tryLock($key)) {
             try {
                 if (!$this->dbManager->keyExists($key. TPUT::FINAL_KEY_RESULT))
